@@ -212,7 +212,7 @@ module grafanaServiceLogsAccess 'grant-access.bicep' = if (hasGrafana) {
   params: {
     kustoName: kustoName
     databaseName: db.serviceLogs
-    readAccessPrincipalIds: [grafana.identity.principalId]
+    readAccessPrincipalIds: [grafana!.identity.principalId]
   }
   dependsOn: [serviceLogsTables]
 }
