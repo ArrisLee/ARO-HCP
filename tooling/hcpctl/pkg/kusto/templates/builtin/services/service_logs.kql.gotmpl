@@ -13,7 +13,7 @@
 {{- else}}
 | where log has '{{.SubResourceGroupId}}'
 {{- end}}
+| order by timestamp {{.OrderBy}}
 {{- if gt .Limit 0}}
 | limit {{.Limit}}
 {{- end}}
-| order by timestamp asc

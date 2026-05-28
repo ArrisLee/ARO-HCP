@@ -107,17 +107,18 @@ func (o *RawQueryOptions) Validate(ctx context.Context) (*ValidatedQueryOptions,
 		resourceGroupName = res.ResourceGroupName
 	}
 
+	queryOptions := kusto.NewQueryOptions()
+	queryOptions.SubscriptionId = subscriptionID
+	queryOptions.ResourceGroupName = resourceGroupName
+	queryOptions.TimestampMin = o.TimestampMin
+	queryOptions.TimestampMax = o.TimestampMax
+	queryOptions.Limit = o.Limit
+	queryOptions.SplitByPod = o.SplitByPod
+
 	return &ValidatedQueryOptions{
 		RawQueryOptions: o,
 		KustoEndpoint:   kustoEndpoint,
-		QueryOptions: kusto.QueryOptions{
-			SubscriptionId:    subscriptionID,
-			ResourceGroupName: resourceGroupName,
-			TimestampMin:      o.TimestampMin,
-			TimestampMax:      o.TimestampMax,
-			Limit:             o.Limit,
-			SplitByPod:        o.SplitByPod,
-		},
+		QueryOptions:    queryOptions,
 	}, nil
 }
 
