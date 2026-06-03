@@ -32,9 +32,13 @@ import (
 	"github.com/Azure/ARO-HCP/internal/utils"
 )
 
-// roleDefinitionResourceIDCacheKeyTTL defines how long a cached role definition is considered valid.
+// roleDefinitionResourceIDCacheKeySuccessTTL defines how long a cached successful GetByID is valid.
 // After this TTL (6 hours), the cached entry is stale and the next GetCachedByID refreshes it from Azure.
-const roleDefinitionResourceIDCacheKeyTTL = 6 * time.Hour
+const roleDefinitionResourceIDCacheKeySuccessTTL = 6 * time.Hour
+
+// roleDefinitionResourceIDCacheKeyErrorTTL defines how long a cached GetByID error is valid.
+// After this TTL (5 minutes), the cached entry is stale and the next GetCachedByID retries Azure.
+const roleDefinitionResourceIDCacheKeyErrorTTL = 5 * time.Minute
 
 // RoleDefinitionsCachedReader exposes cached reads of role definitions by ARM resource ID.
 type RoleDefinitionsCachedReader interface {
@@ -61,6 +65,8 @@ type roleDefinitionsCachedReader struct {
 
 type cachedGetByIDResponse struct {
 	response armauthorization.RoleDefinitionsClientGetByIDResponse
+	// err is set for negative cache entries (failed GetByID). When non-nil, response is ignored.
+	err error
 	// lastUpdate is the wall-clock instant (UTC) when this cache entry was written, from time.Now().UTC().
 	// It is compared with time.Since for TTL / staleness checks (same interpretation as time.Now).
 	lastUpdate time.Time
@@ -83,6 +89,9 @@ func (c *roleDefinitionsCachedReader) GetCachedByID(ctx context.Context, roleDef
 	c.roleDefinitionsCacheLock.RLock()
 	entry := c.roleDefinitionsCache[roleDefinitionResourceID]
 	c.roleDefinitionsCacheLock.RUnlock()
+	if entry.err != nil {
+		return armauthorization.RoleDefinitionsClientGetByIDResponse{}, entry.err
+	}
 	return entry.response, nil
 }
 
@@ -98,11 +107,15 @@ func (c *roleDefinitionsCachedReader) ensureCachedGetByID(ctx context.Context, r
 	}
 	_, err, _ := c.sfGroup.Do(roleDefinitionResourceID, func() (interface{}, error) {
 		resp, err := c.inner.GetByID(ctx, roleDefinitionResourceID, options)
-		if err != nil {
-			return nil, utils.TrackError(fmt.Errorf("failed to get role definition for '%s': %w", roleDefinitionResourceID, err))
-		}
 		c.roleDefinitionsCacheLock.Lock()
 		defer c.roleDefinitionsCacheLock.Unlock()
+		if err != nil {
+			c.roleDefinitionsCache[roleDefinitionResourceID] = cachedGetByIDResponse{
+				err:        utils.TrackError(fmt.Errorf("failed to get role definition for '%s': %w", roleDefinitionResourceID, err)),
+				lastUpdate: c.clock.Now().UTC(),
+			}
+			return nil, nil
+		}
 		c.roleDefinitionsCache[roleDefinitionResourceID] = cachedGetByIDResponse{
 			response:   resp,
 			lastUpdate: c.clock.Now().UTC(),
@@ -116,7 +129,11 @@ func (c *roleDefinitionsCachedReader) ensureCachedGetByID(ctx context.Context, r
 }
 
 func (c *roleDefinitionsCachedReader) isStale(entry cachedGetByIDResponse) bool {
-	return c.clock.Since(entry.lastUpdate) > roleDefinitionResourceIDCacheKeyTTL
+	ttl := roleDefinitionResourceIDCacheKeySuccessTTL
+	if entry.err != nil {
+		ttl = roleDefinitionResourceIDCacheKeyErrorTTL
+	}
+	return c.clock.Since(entry.lastUpdate) > ttl
 }
 
 var _ RoleDefinitionsCachedReader = (*roleDefinitionsCachedReader)(nil)
