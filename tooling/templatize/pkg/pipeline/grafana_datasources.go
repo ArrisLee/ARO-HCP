@@ -108,10 +108,17 @@ func resolveGrafanaADXOptions(serviceGroup string, adx *types.GrafanaADXDatasour
 	}
 
 	if !enabled {
-		return &resolvedGrafanaADXOptions{
+		result := &resolvedGrafanaADXOptions{
 			Enabled:            false,
 			DeleteWhenDisabled: adx.DeleteWhenDisabled,
-		}, nil
+		}
+		// Resolve datasource name even when disabled so that
+		// deleteWhenDisabled can identify the target to remove.
+		result.DatasourceName, err = resolveOptionalString(serviceGroup, "adx.datasourceName", adx.DatasourceName, cfg, outputs)
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
 	}
 
 	geographies, err := resolveOptionalString(serviceGroup, "adx.geographies", adx.Geographies, cfg, outputs)
