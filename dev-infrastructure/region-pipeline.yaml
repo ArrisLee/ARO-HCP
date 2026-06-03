@@ -57,8 +57,16 @@ resourceGroups:
     automatedRetry:
       errorContainsAny:
       - "UpdateConflict"
-      maximumRetryCount: 3
-      durationBetweenRetries: 1m
+      - "grafana API POST /api/datasources"
+      - "grafana API PUT /api/datasources/"
+      - "grafana API DELETE /api/datasources/name/"
+      - "failed with status 429"
+      - "failed with status 500"
+      - "failed with status 502"
+      - "failed with status 503"
+      - "failed with status 504"
+      maximumRetryCount: 5
+      durationBetweenRetries: 2m
     grafanaName: "{{ .monitoring.grafanaName }}"
     grafanaResourceId:
       input:
@@ -85,28 +93,18 @@ resourceGroups:
           step: output
           name: kustoUri
       defaultDatabase:
-        configRef: kusto.serviceLogsDatabase
+        input:
+          resourceGroup: kusto
+          step: output
+          name: serviceLogsDatabase
       datasourceName:
         value: "kusto-{{ .environmentName }}-{{ .azureGeoShortId }}"
       geographies:
-        configRef: monitoring.adxDatasourceGeographies
+        input:
+          resourceGroup: kusto
+          step: output
+          name: adxDatasourceGeographies
       dataConsistency: strongconsistency
-    # Retry signature matches any Grafana datasource API mutation in this
-    # step (POST/PUT/DELETE on /api/datasources*), not only ADX. If
-    # AzureMonitor reconcile is ever explicitly toggled here, the same
-    # retry policy applies to those calls too.
-    automatedRetry:
-      errorContainsAny:
-      - "grafana API POST /api/datasources"
-      - "grafana API PUT /api/datasources/"
-      - "grafana API DELETE /api/datasources/name/"
-      - "failed with status 429"
-      - "failed with status 500"
-      - "failed with status 502"
-      - "failed with status 503"
-      - "failed with status 504"
-      maximumRetryCount: 5
-      durationBetweenRetries: 2m
     identityFrom:
       resourceGroup: global
       step: output
